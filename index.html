@@ -10,7 +10,7 @@
       --text-main: #e5e7eb;
       --text-soft: #9ca3af;
     }
-    
+
     body {
       margin: 0;
       padding: 0;
@@ -19,6 +19,7 @@
       color: var(--text-main);
       min-height: 100vh;
     }
+
     #page-root {
       width: 100%;
       max-width: 1200px;
@@ -29,6 +30,7 @@
       gap: 24px;
       box-sizing: border-box;
     }
+
     #sidebar {
       display: flex;
       flex-direction: column;
@@ -37,31 +39,37 @@
       position: sticky;
       top: 24px;
     }
+
     #ray-image-wrap {
       width: 100%;
       max-width: 320px;
       border-radius: 24px;
       transition: transform 0.2s ease, box-shadow 0.2s ease;
     }
+
     #ray-image-wrap.listening {
       box-shadow: 0 0 0 4px rgba(14, 165, 233, 0.28), 0 0 30px rgba(56, 189, 248, 0.22);
       transform: scale(1.01);
     }
+
     #ray-image-wrap.speaking {
       box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.28), 0 0 30px rgba(37, 99, 235, 0.26);
       transform: scale(1.01);
     }
+
     #ray-image {
       width: 100%;
       display: block;
       border-radius: 24px;
     }
+
     #voice-state {
       min-height: 1.2em;
       font-size: 0.82rem;
       color: #cbd5e1;
       text-align: center;
     }
+
     .panel {
       background: var(--panel-bg);
       border-radius: 16px;
@@ -69,6 +77,7 @@
       padding: 16px;
       box-shadow: 0 14px 32px rgba(0, 0, 0, 0.6);
     }
+
     .row {
       display: flex;
       gap: 8px;
@@ -76,6 +85,7 @@
       align-items: center;
       margin-bottom: 8px;
     }
+
     input, select {
       flex: 1;
       min-width: 220px;
@@ -87,6 +97,7 @@
       font-size: 0.95rem;
       box-sizing: border-box;
     }
+
     button {
       border: none;
       border-radius: 999px;
@@ -97,19 +108,23 @@
       color: #f9fafb;
       white-space: nowrap;
     }
+
     button.secondary {
       background: rgba(255, 255, 255, 0.08);
       border: 1px solid rgba(255, 255, 255, 0.16);
     }
+
     button:disabled {
       opacity: 0.6;
       cursor: default;
     }
+
     #status {
       min-height: 1.2em;
       color: var(--text-soft);
       font-size: 0.84rem;
     }
+
     #chat-history {
       max-height: 520px;
       overflow-y: auto;
@@ -119,6 +134,7 @@
       border: 1px solid #1f2937;
       border-radius: 12px;
     }
+
     .chat-message {
       margin-bottom: 10px;
       padding: 10px;
@@ -127,9 +143,21 @@
       border: 1px solid #1f2937;
       overflow-x: auto;
     }
-    .chat-user { background: #0f172a; white-space: pre-wrap; }
-    .chat-assistant { background: #111827; }
-    .message-label { display: inline-block; margin-bottom: 6px; }
+
+    .chat-user {
+      background: #0f172a;
+      white-space: pre-wrap;
+    }
+
+    .chat-assistant {
+      background: #111827;
+    }
+
+    .message-label {
+      display: inline-block;
+      margin-bottom: 6px;
+    }
+
     .markdown-content p { margin: 0 0 10px; }
     .markdown-content p:last-child { margin-bottom: 0; }
     .markdown-content ul, .markdown-content ol { margin: 8px 0 10px 20px; padding: 0; }
@@ -140,6 +168,7 @@
     .markdown-content code { background: rgba(255,255,255,0.08); padding: 2px 5px; border-radius: 6px; }
     .markdown-content pre { background: #020617; border: 1px solid #334155; border-radius: 10px; padding: 10px; overflow-x: auto; }
     .markdown-content a { color: #38bdf8; text-decoration: underline; }
+
     @media (max-width: 900px) {
       #page-root { grid-template-columns: 1fr; }
       #sidebar { position: static; }
@@ -187,6 +216,7 @@
     const BACKEND_BASE = "https://projectpilot-backend-zkad.onrender.com";
     const CHAT_URL = `${BACKEND_BASE}/api/chat`;
     const VOICE_CHAT_URL = `${BACKEND_BASE}/api/voice-chat`;
+    const SPEAK_URL = `${BACKEND_BASE}/api/speak`;
 
     const chatHistoryEl = document.getElementById("chat-history");
     const chatInput = document.getElementById("chat-input");
@@ -204,6 +234,7 @@
     let isRecording = false;
     let currentReplyAudio = null;
     let currentReplyAudioUrl = null;
+    let isGeneratingSpeech = false;
 
     function getUserId() {
       let id = localStorage.getItem("rayVoiceUserId");
@@ -259,7 +290,9 @@
         currentReplyAudioUrl = null;
       }
 
-      if (!isRecording) setVoiceState("idle", "");
+      if (!isRecording && !isGeneratingSpeech) {
+        setVoiceState("idle", "");
+      }
     }
 
     function playAudioBase64(audioBase64) {
@@ -280,15 +313,48 @@
         currentReplyAudio = new Audio(currentReplyAudioUrl);
 
         currentReplyAudio.onplay = () => setVoiceState("speaking", "Ray is speaking...");
-        currentReplyAudio.onended = () => stopReplyAudio();
-        currentReplyAudio.onerror = () => stopReplyAudio();
+        currentReplyAudio.onended = () => {
+          stopReplyAudio();
+          statusEl.textContent = "";
+        };
+        currentReplyAudio.onerror = () => {
+          stopReplyAudio();
+          statusEl.textContent = "";
+        };
 
         currentReplyAudio.play().catch((err) => {
           console.error("Reply audio could not play:", err);
           stopReplyAudio();
+          statusEl.textContent = "";
         });
       } catch (err) {
         console.error("Audio decode error:", err);
+        statusEl.textContent = "";
+      }
+    }
+
+    async function speakReply(reply) {
+      if (!reply) return;
+
+      isGeneratingSpeech = true;
+      statusEl.textContent = "Generating Ray's voice...";
+
+      try {
+        const res = await fetch(SPEAK_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: reply })
+        });
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Speak failed");
+
+        playAudioBase64(data.audioBase64);
+      } catch (err) {
+        console.error(err);
+        statusEl.textContent = "";
+      } finally {
+        isGeneratingSpeech = false;
       }
     }
 
@@ -312,16 +378,19 @@
           body: JSON.stringify({
             userId: getUserId(),
             projectName,
-            message
+            message,
+            includeAudio: false,
+            voiceMode: true
           })
         });
 
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Chat failed");
 
-        addChatMessage("assistant", data.reply || "No response.");
-        playAudioBase64(data.audioBase64);
+        const reply = data.reply || "No response.";
+        addChatMessage("assistant", reply);
         statusEl.textContent = "";
+        speakReply(reply);
       } catch (err) {
         console.error(err);
         statusEl.textContent = "Chat failed. Please try again.";
@@ -374,7 +443,7 @@
         mediaRecorder.start();
         isRecording = true;
         setVoiceState("listening", "Listening...");
-        statusEl.textContent = "Listening... Click Stop when you’re done.";
+        statusEl.textContent = "Listening... Click Stop when you're done.";
       } catch (err) {
         console.error(err);
         statusEl.textContent = "Microphone access was blocked or unavailable.";
@@ -384,7 +453,7 @@
     function stopRecording() {
       if (mediaRecorder && isRecording) {
         mediaRecorder.stop();
-        statusEl.textContent = "Uploading your voice message...";
+        statusEl.textContent = "Uploading voice...";
       }
     }
 
@@ -399,6 +468,7 @@
       stopBtn.disabled = true;
 
       try {
+        statusEl.textContent = "Transcribing...";
         const res = await fetch(VOICE_CHAT_URL, {
           method: "POST",
           body: formData,
@@ -411,9 +481,10 @@
           addChatMessage("user", data.transcript);
         }
 
-        addChatMessage("assistant", data.reply || "No response.");
-        playAudioBase64(data.audioBase64);
+        const reply = data.reply || "No response.";
+        addChatMessage("assistant", reply);
         statusEl.textContent = "";
+        speakReply(reply);
       } catch (err) {
         console.error(err);
         statusEl.textContent = "Voice chat failed. Please try again.";
@@ -426,7 +497,14 @@
 
     sendBtn.addEventListener("click", sendTypedMessage);
     talkBtn.addEventListener("click", startRecording);
-    stopBtn.addEventListener("click", stopRecording);
+    stopBtn.addEventListener("click", () => {
+      if (isRecording) {
+        stopRecording();
+      } else {
+        stopReplyAudio();
+        statusEl.textContent = "";
+      }
+    });
 
     chatInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
